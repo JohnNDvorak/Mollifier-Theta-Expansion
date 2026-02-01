@@ -18,6 +18,7 @@ from mollifier_theta.core.ir import (
     TermStatus,
 )
 from mollifier_theta.core.scale_model import ScaleModel, theta
+from mollifier_theta.core.stage_meta import BoundMeta
 
 
 class ThetaBarrierMismatch(Exception):
@@ -242,12 +243,19 @@ class DIKloostermanBound:
             parents=[term.id],
             lemma_citation=self.CITATION,
             multiplicity=term.multiplicity,
+            kernel_state=term.kernel_state,
             metadata={
                 **term.metadata,
                 "di_bound_applied": True,
                 "error_exponent": str(self.model.error_exponent),
                 "theta_max": str(KNOWN_THETA_MAX),
                 "scale_model_dict": scale.to_dict(),
+                "_bound": BoundMeta(
+                    strategy="DI_Kloosterman",
+                    error_exponent=str(self.model.error_exponent),
+                    citation=self.CITATION,
+                    bound_family="DI_Kloosterman",
+                ).model_dump(),
             },
         )
 

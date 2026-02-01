@@ -51,8 +51,8 @@ class TestDeltaMethodStructure:
         ledger.add(off_diagonal_term)
         results = delta.apply([off_diagonal_term], ledger)
         phase_exprs = {p.expression for p in results[0].phases}
-        assert "e(am/c)" in phase_exprs
-        assert "e(-bn/c)" in phase_exprs
+        assert "e(a*m/c)" in phase_exprs
+        assert "e(-b*n/c)" in phase_exprs
 
     def test_additive_phases_are_separable(self, delta, off_diagonal_term) -> None:
         ledger = TermLedger()
@@ -101,7 +101,7 @@ class TestDeltaMethodHistory:
         ledger = TermLedger()
         ledger.add(off_diagonal_term)
         results = delta.apply([off_diagonal_term], ledger)
-        assert results[0].history[-1].transform == "DeltaMethodInsert"
+        assert results[0].history[-1].transform == "DeltaMethodCollapse"
 
     def test_metadata_flag(self, delta, off_diagonal_term) -> None:
         ledger = TermLedger()

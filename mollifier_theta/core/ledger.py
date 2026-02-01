@@ -14,6 +14,7 @@ class TermLedger:
 
     def __init__(self) -> None:
         self._terms: dict[str, Term] = {}
+        self._pruned_ids: set[str] = set()
 
     def add(self, term: Term) -> Term:
         """Add a term to the ledger. Returns the term."""
@@ -29,11 +30,22 @@ class TermLedger:
         return terms
 
     def get(self, term_id: str) -> Term:
-        """Retrieve a term by id."""
+        """Retrieve a term by id. Works for all terms including pruned ones."""
         return self._terms[term_id]
 
+    def clone(self) -> "TermLedger":
+        """Shallow-copy the ledger. Terms are immutable so sharing is safe."""
+        new = TermLedger()
+        new._terms = dict(self._terms)
+        new._pruned_ids = set(self._pruned_ids)
+        return new
+
     def all_terms(self) -> list[Term]:
-        """All terms in insertion order."""
+        """All non-pruned terms in insertion order."""
+        return [t for t in self._terms.values() if t.id not in self._pruned_ids]
+
+    def all_terms_including_pruned(self) -> list[Term]:
+        """All terms including pruned ones, in insertion order."""
         return list(self._terms.values())
 
     def filter(
@@ -42,8 +54,8 @@ class TermLedger:
         status: TermStatus | None = None,
         predicate: Callable[[Term], bool] | None = None,
     ) -> list[Term]:
-        """Filter terms by kind, status, and/or arbitrary predicate."""
-        result = list(self._terms.values())
+        """Filter non-pruned terms by kind, status, and/or arbitrary predicate."""
+        result = self.all_terms()
         if kind is not None:
             result = [t for t in result if t.kind == kind]
         if status is not None:
@@ -57,20 +69,20 @@ class TermLedger:
         return self.filter(status=TermStatus.ACTIVE)
 
     def count(self) -> int:
+        return len(self._terms) - len(self._pruned_ids)
+
+    def count_total(self) -> int:
+        """Total terms including pruned."""
         return len(self._terms)
 
     def validate_all(self) -> list[str]:
-        """Run invariant checks on all terms."""
-        return validate_all(list(self._terms.values()))
+        """Run invariant checks on all non-pruned terms."""
+        return validate_all(self.all_terms())
 
     def to_json(self) -> str:
         """Serialize ledger to JSON string."""
-        terms_data = [t.model_dump() for t in self._terms.values()]
-        # Convert enums to their values for clean JSON
-        for td in terms_data:
-            td["kind"] = td["kind"].value if hasattr(td["kind"], "value") else td["kind"]
-            td["status"] = td["status"].value if hasattr(td["status"], "value") else td["status"]
-        return json.dumps({"terms": terms_data}, indent=2)
+        terms_data = [t.model_dump(mode="json") for t in self._terms.values()]
+        return json.dumps({"terms": terms_data}, indent=2, sort_keys=True, default=str)
 
     @classmethod
     def from_json(cls, json_str: str) -> "TermLedger":
@@ -79,11 +91,28 @@ class TermLedger:
         ledger = cls()
         for td in data["terms"]:
             term = Term(**td)
-            ledger._terms[term.id] = term
+            ledger.add(term)  # Route through add() for duplicate detection
         return ledger
 
+    def prune(self, keep_statuses: set[TermStatus] | None = None) -> int:
+        """Mark intermediate terms as pruned (non-destructive).
+
+        Pruned terms are hidden from all_terms(), filter(), count() but
+        still accessible via get() for parent chain traversal.
+        Returns the number of terms pruned.
+        """
+        if keep_statuses is None:
+            keep_statuses = {TermStatus.MAIN_TERM, TermStatus.BOUND_ONLY, TermStatus.ERROR}
+
+        newly_pruned = {
+            tid for tid, t in self._terms.items()
+            if t.status not in keep_statuses and tid not in self._pruned_ids
+        }
+        self._pruned_ids |= newly_pruned
+        return len(newly_pruned)
+
     def __len__(self) -> int:
-        return len(self._terms)
+        return self.count()
 
     def __contains__(self, term_id: str) -> bool:
         return term_id in self._terms

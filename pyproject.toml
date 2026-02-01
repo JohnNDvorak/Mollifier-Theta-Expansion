@@ -8,10 +8,10 @@ version = "0.1.0"
 description = "Mollified zeta second-moment pipeline through the theta < 4/7 barrier"
 requires-python = ">=3.10"
 dependencies = [
-    "pydantic>=2",
-    "typer>=0.9",
-    "sympy>=1.12",
-    "rich>=13",
+    "pydantic>=2.5,<3",
+    "typer>=0.9,<1",
+    "sympy>=1.12,<2",
+    "rich>=13,<14",
 ]
 
 [project.optional-dependencies]

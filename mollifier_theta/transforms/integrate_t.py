@@ -74,6 +74,7 @@ class IntegrateOverT:
                         depends_on=[v for v in phase.depends_on if v != "t"],
                         is_separable=phase.is_separable,
                         absorbed=False,
+                        unit_modulus=phase.unit_modulus,
                     )
                 )
             else:

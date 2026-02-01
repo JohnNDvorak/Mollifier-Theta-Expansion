@@ -1,0 +1,64 @@
+{
+  "additive_twists": [
+    {
+      "description": "",
+      "invert_numerator": false,
+      "modulus": "c",
+      "numerator": "a",
+      "sign": 1,
+      "sum_variable": "m"
+    },
+    {
+      "description": "",
+      "invert_numerator": true,
+      "modulus": "c",
+      "numerator": "b_bar",
+      "sign": -1,
+      "sum_variable": "n*"
+    }
+  ],
+  "coeff_seqs": [
+    {
+      "arithmetic_type": "divisor",
+      "citations": [],
+      "description": "",
+      "name": "a_m",
+      "norm_bound": "",
+      "variable": "m",
+      "voronoi_eligible": "unknown"
+    },
+    {
+      "arithmetic_type": "generic",
+      "citations": [],
+      "description": "",
+      "name": "b_n*",
+      "norm_bound": "",
+      "variable": "n*",
+      "voronoi_eligible": "unknown"
+    }
+  ],
+  "sum_indices": [
+    {
+      "coprime_to": [],
+      "name": "m",
+      "range_description": "",
+      "range_lower": "1",
+      "range_upper": "N"
+    },
+    {
+      "coprime_to": [],
+      "name": "n*",
+      "range_description": "",
+      "range_lower": "1",
+      "range_upper": "N_dual"
+    }
+  ],
+  "weight_kernels": [
+    {
+      "description": "",
+      "kind": "smooth",
+      "original_name": "W_AFE",
+      "parameters": {}
+    }
+  ]
+}

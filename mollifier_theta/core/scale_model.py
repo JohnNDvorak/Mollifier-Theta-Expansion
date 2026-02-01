@@ -123,6 +123,33 @@ class ScaleModel:
             sub_exponents=sub_exp,
         )
 
+    def solve_for_theta(self, expr_str: str | None = None) -> float:
+        """Solve expr = 1 for theta and return the smallest root in (0, 1).
+
+        If *expr_str* is provided, parse it; otherwise use self.T_exponent.
+        Falls back to numerical bisection for expressions SymPy can't
+        handle analytically (Piecewise, Max, etc.).
+        """
+        if expr_str is not None:
+            model = ScaleModel(T_exponent=expr_str)
+        else:
+            model = self
+
+        roots = model.solve_all_roots(lo=0.0, hi=1.0)
+        if not roots:
+            raise ValueError(
+                f"No solution found for ({model.T_exponent}) = 1 in (0, 1)"
+            )
+        return roots[0]  # smallest root
+
+    def evaluate_sub_exponents(self, theta_val: float) -> dict[str, float]:
+        """Evaluate all sub_exponents at *theta_val*."""
+        _, th = _symbols()
+        return {
+            k: float(v.subs(th, theta_val))
+            for k, v in self.sub_exponents.items()
+        }
+
     def __repr__(self) -> str:
         return f"ScaleModel({self.to_str()})"
 
@@ -133,3 +160,134 @@ class ScaleModel:
             sp.simplify(self.T_exponent - other.T_exponent) == 0
             and self.log_power == other.log_power
         )
+
+    # ---- Containment helpers (WI-6) ----
+    # All SymPy usage outside reports/ should go through these methods.
+
+    def solve_all_roots(
+        self,
+        lo: float = 0.0,
+        hi: float = 1.0,
+        tol: float = 1e-10,
+    ) -> list[float]:
+        """Find ALL roots of T_exponent - 1 = 0 in (lo, hi).
+
+        Uses symbolic solve first; falls back to numerical bisection for
+        expressions SymPy can't handle (Piecewise, Max, etc.).
+        Returns sorted list of roots.
+        """
+        _, th = _symbols()
+        eq = self.T_exponent - 1
+
+        # Try symbolic solve first
+        roots: list[float] = []
+        try:
+            solutions = sp.solve(eq, th)
+            for s in solutions:
+                try:
+                    val = float(s)
+                    if lo < val < hi:
+                        roots.append(val)
+                except (TypeError, ValueError, OverflowError):
+                    continue
+        except (NotImplementedError, ValueError):
+            pass
+
+        # If symbolic solve found nothing (e.g. Piecewise/Max), use bisection
+        if not roots:
+            roots = self._bisection_roots(lo, hi, tol)
+
+        # Verify roots numerically
+        verified = []
+        for r in roots:
+            val = float(eq.subs(th, r))
+            if abs(val) < max(tol, 1e-8):
+                verified.append(r)
+
+        return sorted(verified)
+
+    def _bisection_roots(
+        self,
+        lo: float,
+        hi: float,
+        tol: float = 1e-10,
+        n_samples: int = 200,
+    ) -> list[float]:
+        """Numerical root-finding via bisection on a grid."""
+        _, th = _symbols()
+        eq = self.T_exponent - 1
+        roots: list[float] = []
+
+        # Sample the interval
+        step = (hi - lo) / n_samples
+        prev_val = float(eq.subs(th, lo))
+        prev_x = lo
+
+        for i in range(1, n_samples + 1):
+            x = lo + i * step
+            try:
+                val = float(eq.subs(th, x))
+            except (TypeError, ValueError):
+                prev_val = float("nan")
+                prev_x = x
+                continue
+
+            # Exact root on grid point
+            if abs(val) < tol and lo < x < hi:
+                roots.append(x)
+                prev_val = val
+                prev_x = x
+                continue
+
+            # Sign change detected — bisect to find root
+            if prev_val * val < 0:
+                a, b = prev_x, x
+                for _ in range(100):  # enough iterations for tol ~ 1e-10
+                    mid = (a + b) / 2
+                    mid_val = float(eq.subs(th, mid))
+                    if abs(mid_val) < tol:
+                        break
+                    if prev_val * mid_val < 0:
+                        b = mid
+                    else:
+                        a = mid
+                        prev_val = mid_val
+                roots.append((a + b) / 2)
+
+            prev_val = val
+            prev_x = x
+
+        return roots
+
+    @classmethod
+    def evaluate_expr(cls, expr_str: str, theta_val: float) -> float:
+        """Parse and evaluate a symbolic expression at a given theta."""
+        expr = sp.sympify(expr_str, locals=cls._PARSE_LOCALS)
+        return float(expr.subs(theta, theta_val))
+
+    @classmethod
+    def solve_expr_equals_one(cls, expr_str: str) -> float:
+        """Solve expr = 1 for theta and return the smallest root in (0, 1).
+
+        Delegates to solve_all_roots for robust handling of multi-root
+        and non-algebraic (Piecewise, Max) expressions.
+        """
+        model = cls(T_exponent=expr_str)
+        roots = model.solve_all_roots(lo=0.0, hi=1.0)
+        if not roots:
+            raise ValueError(f"No solution found for ({expr_str}) = 1 in (0, 1)")
+        return roots[0]
+
+    @classmethod
+    def simplify_expr(cls, expr_str: str) -> str:
+        """Simplify a symbolic expression and return as string."""
+        expr = sp.sympify(expr_str, locals=cls._PARSE_LOCALS)
+        return str(sp.simplify(expr))
+
+    @classmethod
+    def expr_to_rational(cls, expr_str: str) -> "Fraction":
+        """Convert a symbolic expression to a Fraction (must be rational)."""
+        from fractions import Fraction
+        expr = sp.sympify(expr_str, locals=cls._PARSE_LOCALS)
+        r = sp.Rational(expr)
+        return Fraction(int(r.p), int(r.q))

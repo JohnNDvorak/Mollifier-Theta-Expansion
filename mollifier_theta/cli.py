@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import typer
 
 app = typer.Typer(name="mollifier", help="Mollifier theta expansion framework")
@@ -45,6 +47,140 @@ def export_mathematica_diagonal() -> None:
     from mollifier_theta.reports.mathematica_export import export_diagonal_main_term
 
     export_diagonal_main_term()
+
+
+# --- Diagnose sub-app ---
+diagnose_app = typer.Typer(help="Diagnostic analysis commands")
+app.add_typer(diagnose_app, name="diagnose")
+
+
+@diagnose_app.command("slack")
+def diagnose_slack(
+    theta: float = typer.Option(0.56, help="Theta value to diagnose"),
+    k: int = typer.Option(3, "--K", help="Mollifier length K"),
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
+) -> None:
+    """Identify the binding constraint (smallest slack) on theta."""
+    from mollifier_theta.analysis.slack import diagnose_pipeline
+    from mollifier_theta.reports.render_diagnose import (
+        export_diagnose_json,
+        render_slack_table,
+        slack_to_json,
+    )
+
+    result = diagnose_pipeline(theta_val=theta, K=k)
+
+    if json_output:
+        import json
+
+        typer.echo(json.dumps(slack_to_json(result), indent=2, default=str))
+    else:
+        render_slack_table(result)
+
+    artifact_path = Path("artifacts/diagnose/slack.json")
+    export_diagnose_json(slack_to_json(result), artifact_path)
+
+
+@diagnose_app.command("what-if")
+def diagnose_what_if(
+    name: str = typer.Argument(..., help="Sub-exponent name (e.g. di_saving)"),
+    new_expr: str = typer.Argument(..., help='New expression (e.g. "-theta/3")'),
+    theta: float = typer.Option(0.56, help="Theta value for context"),
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
+) -> None:
+    """Explore hypothetical sub-exponent changes."""
+    from mollifier_theta.analysis.what_if import what_if_analysis
+    from mollifier_theta.reports.render_diagnose import (
+        export_diagnose_json,
+        render_what_if_table,
+        what_if_to_json,
+    )
+
+    try:
+        result = what_if_analysis(name, new_expr)
+    except KeyError as e:
+        typer.echo(str(e), err=True)
+        raise typer.Exit(code=1)
+
+    if json_output:
+        import json
+
+        typer.echo(json.dumps(what_if_to_json(result), indent=2, default=str))
+    else:
+        render_what_if_table(result)
+
+    artifact_path = Path("artifacts/diagnose/what_if.json")
+    export_diagnose_json(what_if_to_json(result), artifact_path)
+
+
+@repro_app.command("conrey89-voronoi")
+def repro_conrey89_voronoi(
+    theta: float = typer.Option(0.56, help="Theta value for the mollifier length"),
+    k: int = typer.Option(3, "--K", help="Mollifier length K"),
+) -> None:
+    """Run the Conrey89 pipeline with Voronoi summation on the off-diagonal."""
+    from mollifier_theta.pipelines.conrey89_voronoi import run_conrey89_voronoi_pipeline
+
+    run_conrey89_voronoi_pipeline(theta=theta, K=k)
+
+
+@export_app.command("proof-cert")
+def export_proof_cert(
+    theta: float = typer.Option(0.56, help="Theta value"),
+    k: int = typer.Option(3, "--K", help="Mollifier length K"),
+    output_dir: Path = typer.Option(
+        Path("artifacts/proof_certificate"), help="Output directory",
+    ),
+    pipeline: str = typer.Option("conrey89", help="Pipeline variant (conrey89 or conrey89-voronoi)"),
+) -> None:
+    """Export a proof certificate (JSON + Markdown) for a pipeline run."""
+    from mollifier_theta.reports.proof_certificate import export_proof_certificate
+
+    if pipeline == "conrey89-voronoi":
+        from mollifier_theta.pipelines.conrey89_voronoi import conrey89_voronoi_pipeline
+
+        result = conrey89_voronoi_pipeline(theta_val=theta, K=k)
+    else:
+        from mollifier_theta.pipelines.conrey89 import conrey89_pipeline
+
+        result = conrey89_pipeline(theta_val=theta, K=k)
+
+    export_proof_certificate(result, output_dir)
+    typer.echo(f"Proof certificate written to {output_dir}")
+
+
+@diagnose_app.command("compare")
+def diagnose_compare(
+    theta: float = typer.Option(0.56, help="Theta value to diagnose"),
+    k: int = typer.Option(3, "--K", help="Mollifier length K"),
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
+) -> None:
+    """Compare slack diagnostics between conrey89 and conrey89-voronoi pipelines."""
+    import json as json_mod
+
+    from mollifier_theta.analysis.slack import compare_pipelines
+
+    comparison = compare_pipelines(theta_val=theta, K=k)
+
+    if json_output:
+        typer.echo(json_mod.dumps(comparison, indent=2, default=str))
+    else:
+        typer.echo(f"Pipeline comparison at theta={theta}")
+        typer.echo("")
+        for variant in ("baseline", "voronoi"):
+            info = comparison[variant]
+            typer.echo(f"  {info['pipeline']}:")
+            typer.echo(f"    theta_max   = {info['theta_max']:.10f}")
+            typer.echo(f"    headroom    = {info['headroom']:.6f}")
+            typer.echo(f"    bottleneck  = {info['bottleneck']}")
+            typer.echo(f"    family      = {info['bottleneck_family']}")
+            typer.echo(f"    constraints = {info['num_constraints']}")
+            typer.echo(f"    families    = {info['families']}")
+            typer.echo("")
+
+    artifact_path = Path("artifacts/diagnose/comparison.json")
+    artifact_path.parent.mkdir(parents=True, exist_ok=True)
+    artifact_path.write_text(json_mod.dumps(comparison, indent=2, default=str))
 
 
 if __name__ == "__main__":

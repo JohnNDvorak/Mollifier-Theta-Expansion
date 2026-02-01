@@ -92,7 +92,7 @@ class ApproxFunctionalEq:
                 Phase(
                     expression="chi(1/2+it)",
                     depends_on=["t"],
-                    description="Functional equation chi factor",
+                    unit_modulus=True,
                 )
             ],
             history=list(term.history) + [history],

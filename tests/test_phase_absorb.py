@@ -22,8 +22,8 @@ def term_with_separable_phases() -> Term:
         variables=["m", "n", "c"],
         kernels=[Kernel(name="W_AFE"), Kernel(name="DeltaMethodKernel")],
         phases=[
-            Phase(expression="e(am/c)", depends_on=["m", "c"], is_separable=True),
-            Phase(expression="e(-bn/c)", depends_on=["n", "c"], is_separable=True),
+            Phase(expression="e(am/c)", depends_on=["m", "c"], is_separable=True, unit_modulus=True),
+            Phase(expression="e(-bn/c)", depends_on=["n", "c"], is_separable=True, unit_modulus=True),
             Phase(expression="S(m,n;c)/c", depends_on=["m", "n", "c"], is_separable=False),
         ],
     )
@@ -58,7 +58,7 @@ class TestAbsorption:
         term = Term(
             kind=TermKind.KLOOSTERMAN,
             phases=[
-                Phase(expression="e(x)", depends_on=["x"], is_separable=True, absorbed=True),
+                Phase(expression="e(x)", depends_on=["x"], is_separable=True, absorbed=True, unit_modulus=True),
             ],
         )
         ledger = TermLedger()

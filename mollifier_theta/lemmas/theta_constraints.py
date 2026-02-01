@@ -15,10 +15,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from fractions import Fraction
 
-import sympy as sp
-
 from mollifier_theta.core.ir import Term, TermStatus
-from mollifier_theta.core.scale_model import ScaleModel, theta
+from mollifier_theta.core.scale_model import ScaleModel
 from mollifier_theta.lemmas.di_kloosterman import (
     DIExponentModel,
     KNOWN_THETA_MAX,
@@ -41,7 +39,7 @@ class ThetaMaxResult:
                      is admissible.
     """
 
-    symbolic: sp.Rational
+    symbolic: Fraction
     numerical: float
     numerical_lo: float
     numerical_hi: float
@@ -77,11 +75,9 @@ def theta_admissible(terms: list[Term], theta_val: float) -> bool:
             if not sm.is_dominated_at(theta_val):
                 return False
         elif term.metadata.get("error_exponent"):
-            expr = sp.sympify(
-                term.metadata["error_exponent"],
-                locals={"theta": theta},
+            val = ScaleModel.evaluate_expr(
+                term.metadata["error_exponent"], theta_val,
             )
-            val = float(expr.subs(theta, theta_val))
             if val >= 1:
                 return False
 
@@ -93,16 +89,25 @@ def find_theta_max(
     lo: float = 0.01,
     hi: float = 0.99,
     tol: float = 1e-6,
+    known_theta_max: Fraction | None = None,
 ) -> ThetaMaxResult:
-    """Locate the supremum of admissible theta by three convergent methods.
+    """Locate the supremum of admissible theta by convergent methods.
 
-    1. Binary search on theta_admissible(terms, ·) to find the numerical
-       boundary within ±tol.
-    2. Symbolic derivation: solve E(theta) = 1 via DIExponentModel.
-    3. Cross-check symbolic result against KNOWN_THETA_MAX = 4/7.
+    When known_theta_max is None (default):
+        Three-method reconciliation (baseline pipeline):
+        1. Binary search on theta_admissible(terms, ·)
+        2. Symbolic derivation from DIExponentModel
+        3. Cross-check against KNOWN_THETA_MAX = 4/7
 
-    Raises ThetaBarrierMismatch if any pair of the three disagrees beyond
-    the binary-search tolerance.
+    When known_theta_max is provided:
+        Two-method reconciliation (variant pipelines):
+        1. Binary search on theta_admissible(terms, ·)
+        2. Cross-check numerical result against provided constant
+        (DIExponentModel symbolic derivation is skipped since the
+        binding constraint may come from a different bound family.)
+
+    Raises ThetaBarrierMismatch if the numerical and symbolic/known
+    values disagree beyond the binary-search tolerance.
     """
     # --- Numerical: binary search ---
     while hi - lo > tol:
@@ -114,29 +119,30 @@ def find_theta_max(
 
     numerical_theta_max = (lo + hi) / 2
 
-    # --- Symbolic: derived from exponent algebra (Layer 1) ---
-    model = DIExponentModel()
-    symbolic_theta_max = model.theta_max()
+    if known_theta_max is None:
+        # Default path: derive symbolically from DI and cross-check
+        model = DIExponentModel()
+        symbolic_theta_max_sp = model.theta_max()
+        symbolic_theta_max = Fraction(int(symbolic_theta_max_sp.p), int(symbolic_theta_max_sp.q))
 
-    # --- Regression constant (Layer 2) ---
-    known = sp.Rational(KNOWN_THETA_MAX.numerator, KNOWN_THETA_MAX.denominator)
-    if symbolic_theta_max != known:
-        raise ThetaBarrierMismatch(
-            f"Symbolic theta_max = {symbolic_theta_max}, "
-            f"known constant = {known}"
-        )
+        # Layer 2 cross-check
+        if symbolic_theta_max != KNOWN_THETA_MAX:
+            raise ThetaBarrierMismatch(
+                f"Symbolic theta_max = {symbolic_theta_max}, "
+                f"known constant = {KNOWN_THETA_MAX}"
+            )
+    else:
+        # Variant pipeline path: use provided known constant
+        symbolic_theta_max = known_theta_max
 
-    # --- Reconcile numerical with symbolic ---
+    # --- Reconcile numerical with symbolic/known ---
     symbolic_float = float(symbolic_theta_max)
     delta = abs(numerical_theta_max - symbolic_float)
-    # The binary search can only resolve to ±tol, so allow 2*tol as the
-    # maximum acceptable gap (midpoint can be up to tol/2 off, plus float
-    # rounding).
     max_acceptable_gap = 2 * tol
     if delta > max_acceptable_gap:
         raise ThetaBarrierMismatch(
             f"Numerical theta_max = {numerical_theta_max:.10f}, "
-            f"symbolic = {symbolic_float:.10f}, "
+            f"symbolic/known = {symbolic_float:.10f}, "
             f"gap = {delta:.2e} exceeds 2*tol = {max_acceptable_gap:.2e}"
         )
 

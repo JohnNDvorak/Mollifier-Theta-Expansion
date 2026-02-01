@@ -3,6 +3,12 @@
 A phase is separable if it depends on a single summation variable.
 Absorbing it means folding it into the coefficient sequence, which
 preserves the L2 norm ||A||_2. The absorbed flag is set to True.
+
+Correctness proof (structural):
+  If phase p has unit_modulus=True and is_separable=True, then
+  |p(n)| = 1 for all n. Absorbing p into coefficients a_n -> a_n * p(n)
+  preserves ||a||_2 because |a_n * p(n)|^2 = |a_n|^2 * |p(n)|^2 = |a_n|^2.
+  This is an exact isometry, not an approximation.
 """
 
 from __future__ import annotations
@@ -39,14 +45,15 @@ class PhaseAbsorb:
         new_phases: list[Phase] = []
         absorbed_any = False
         for phase in term.phases:
-            if phase.is_separable and not phase.absorbed:
-                # Mark as absorbed
+            if phase.is_separable and not phase.absorbed and phase.unit_modulus:
+                # Structural correctness: |p(n)| = 1 => ||a*p||_2 = ||a||_2
                 new_phases.append(
                     Phase(
                         expression=phase.expression,
                         depends_on=phase.depends_on,
                         is_separable=True,
                         absorbed=True,
+                        unit_modulus=phase.unit_modulus,
                     )
                 )
                 absorbed_any = True
@@ -70,9 +77,11 @@ class PhaseAbsorb:
             history=list(term.history) + [history],
             parents=[term.id],
             multiplicity=term.multiplicity,
+            kernel_state=term.kernel_state,
             metadata={
                 **term.metadata,
                 "phases_absorbed": True,
+                "absorption_proof": "unit_modulus_isometry",
             },
         )
 
@@ -80,8 +89,29 @@ class PhaseAbsorb:
         return (
             "Phase absorption: separable unit-modulus phases (depending on "
             "single variable) absorbed into coefficient sequences. "
-            "L2 norm ||A||_2 is preserved."
+            "L2 norm ||A||_2 is preserved exactly (structural proof: "
+            "|p(n)| = 1 => ||a*p||_2 = ||a||_2)."
         )
+
+
+def verify_absorption_invariant(term: Term) -> list[str]:
+    """Verify that all absorbed phases satisfy the structural proof conditions.
+
+    Returns a list of violations (empty = all good).
+    """
+    violations: list[str] = []
+    for phase in term.phases:
+        if phase.absorbed and not phase.unit_modulus:
+            violations.append(
+                f"Phase '{phase.expression}' is absorbed but unit_modulus=False. "
+                f"Absorption only preserves L2 norm for unit-modulus phases."
+            )
+        if phase.absorbed and not phase.is_separable:
+            violations.append(
+                f"Phase '{phase.expression}' is absorbed but is_separable=False. "
+                f"Absorption requires separability."
+            )
+    return violations
 
 
 def spot_check_norm_preservation(
@@ -92,6 +122,9 @@ def spot_check_norm_preservation(
     """Numerical spot-check: random coefficients * unit phase preserves ||A||_2.
 
     Returns (passed, norm_before, norm_after).
+
+    Note: This is a supplementary check. The primary correctness guarantee
+    is the structural proof in verify_absorption_invariant().
     """
     rng = random.Random(seed)
 

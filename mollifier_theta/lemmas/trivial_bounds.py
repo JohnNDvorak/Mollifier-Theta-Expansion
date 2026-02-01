@@ -38,6 +38,7 @@ class TrivialBound:
             parents=[term.id],
             lemma_citation=self.CITATION,
             multiplicity=term.multiplicity,
+            kernel_state=term.kernel_state,
             metadata={**term.metadata, "trivial_bound": True},
         )
 
@@ -85,6 +86,7 @@ class WeilBound:
             parents=[term.id],
             lemma_citation=self.CITATION,
             multiplicity=term.multiplicity,
+            kernel_state=term.kernel_state,
             metadata={
                 **term.metadata,
                 "weil_bound": True,

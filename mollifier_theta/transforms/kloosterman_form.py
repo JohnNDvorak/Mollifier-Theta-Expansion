@@ -9,12 +9,15 @@ from __future__ import annotations
 from mollifier_theta.core.ir import (
     HistoryEntry,
     Kernel,
+    KernelState,
     Phase,
     Range,
     Term,
     TermKind,
 )
 from mollifier_theta.core.ledger import TermLedger
+from mollifier_theta.core.stage_meta import KloostermanMeta
+from mollifier_theta.core.sum_structures import SumStructure
 
 
 class KloostermanForm:
@@ -24,8 +27,9 @@ class KloostermanForm:
         results: list[Term] = []
         new_terms: list[Term] = []
         for term in terms:
-            if term.kind == TermKind.OFF_DIAGONAL and term.metadata.get(
-                "delta_method_applied"
+            if (
+                term.kind == TermKind.OFF_DIAGONAL
+                and term.kernel_state == KernelState.COLLAPSED
             ):
                 transformed = self._apply_one(term)
                 results.append(transformed)
@@ -45,21 +49,42 @@ class KloostermanForm:
             ),
         )
 
-        # The Kloosterman structure replaces the separated additive character phases.
-        # The e(am/c) and e(-bn/c) phases are consumed into S(m,n;c).
+        # Build set of phase expressions to consume.
+        # Data-driven: read SumStructure twists if available.
+        consumed_expressions: set[str] = set()
+        ss_data = term.metadata.get("sum_structure")
+        used_fallback = False
+        if ss_data:
+            ss = SumStructure.model_validate(ss_data)
+            for twist in ss.additive_twists:
+                consumed_expressions.add(twist.format_phase_expression())
+        else:
+            # Fallback: hard-coded legacy expressions (logged as fallback)
+            consumed_expressions.add("e(am/c)")
+            consumed_expressions.add("e(-bn/c)")
+            used_fallback = True
+
+        # Determine the sum variables involved for the Kloosterman phase.
+        # Use the actual term variables (which may be renamed after Voronoi).
+        kloosterman_vars = list(term.variables)
+
         new_phases: list[Phase] = []
+        actually_consumed: list[str] = []
         for p in term.phases:
-            if p.expression in ("e(am/c)", "e(-bn/c)"):
+            if p.expression in consumed_expressions:
                 # Consumed into Kloosterman sum
+                actually_consumed.append(p.expression)
                 continue
             new_phases.append(p)
 
         # Add Kloosterman phase as a combined non-separable phase
+        # Use actual term variables (may include n* after Voronoi)
         new_phases.append(
             Phase(
                 expression="S(m,n;c)/c",
-                depends_on=["m", "n", "c"],
+                depends_on=kloosterman_vars,
                 is_separable=False,
+                unit_modulus=False,
             )
         )
 
@@ -76,10 +101,17 @@ class KloostermanForm:
             history=list(term.history) + [history],
             parents=[term.id],
             multiplicity=term.multiplicity,
+            kernel_state=KernelState.KLOOSTERMANIZED,
             metadata={
                 **term.metadata,
                 "kloosterman_form": True,
-                "kloosterman_variables": ["m", "n", "c"],
+                "kloosterman_variables": kloosterman_vars,
+                "kloosterman_used_fallback": used_fallback,
+                "_kloosterman": KloostermanMeta(
+                    formed=True,
+                    variables=kloosterman_vars,
+                    consumed_phases=actually_consumed,
+                ).model_dump(),
             },
         )
 

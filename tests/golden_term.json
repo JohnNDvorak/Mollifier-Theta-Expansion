@@ -1,0 +1,74 @@
+{
+  "expression": "sum S(m,n;c)/c ...",
+  "history": [
+    {
+      "description": "Golden fixture",
+      "parent_ids": [],
+      "transform": "TestSetup"
+    }
+  ],
+  "id": "golden_term_001",
+  "kernel_state": "Kloostermanized",
+  "kernels": [
+    {
+      "argument": "",
+      "description": "",
+      "name": "W_AFE",
+      "properties": {
+        "rapid_decay": true
+      },
+      "support": "(0,inf)"
+    }
+  ],
+  "kind": "Kloosterman",
+  "lemma_citation": "",
+  "metadata": {
+    "test_key": "test_value"
+  },
+  "multiplicity": 2,
+  "parents": [],
+  "phases": [
+    {
+      "absorbed": false,
+      "depends_on": [
+        "m",
+        "c"
+      ],
+      "expression": "e(am/c)",
+      "is_separable": true,
+      "unit_modulus": true
+    },
+    {
+      "absorbed": false,
+      "depends_on": [
+        "m",
+        "n",
+        "c"
+      ],
+      "expression": "S(m,n;c)/c",
+      "is_separable": false,
+      "unit_modulus": false
+    }
+  ],
+  "ranges": [
+    {
+      "description": "",
+      "lower": "1",
+      "upper": "N",
+      "variable": "m"
+    },
+    {
+      "description": "",
+      "lower": "1",
+      "upper": "N",
+      "variable": "n"
+    }
+  ],
+  "scale_model": "",
+  "status": "Active",
+  "variables": [
+    "m",
+    "n",
+    "c"
+  ]
+}

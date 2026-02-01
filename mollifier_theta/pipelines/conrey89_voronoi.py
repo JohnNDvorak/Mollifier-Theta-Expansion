@@ -1,11 +1,11 @@
-"""Full Conrey89 reproduction pipeline.
+"""Conrey89 pipeline variant with Voronoi summation on the off-diagonal.
 
-Chains: ApproxFE -> OpenSquare(K=3) -> IntegrateOverT -> DiagonalSplit ->
-  Diagonal path: DiagonalExtract
-  Off-diagonal path: DeltaMethod -> KloostermanForm -> PhaseAbsorb -> DI bound
--> theta check
+Identical to conrey89 except:
+  DeltaMethodSetup -> VoronoiTransform(n) -> DeltaMethodCollapse -> ...
 
-Returns PipelineResult with ledger, theta_max, main_term, report_data.
+This is the "shadow pipeline" for testing Voronoi infrastructure.
+The bounding step uses a placeholder post-Voronoi bound until real
+bounds are implemented.
 """
 
 from __future__ import annotations
@@ -16,6 +16,7 @@ from pathlib import Path
 from rich.console import Console
 
 from mollifier_theta.core.ir import (
+    HistoryEntry,
     Range,
     Term,
     TermKind,
@@ -23,10 +24,10 @@ from mollifier_theta.core.ir import (
 )
 from mollifier_theta.core.ledger import TermLedger
 from mollifier_theta.core.serialize import export_dict, export_ledger
+from mollifier_theta.lemmas.bound_strategy import PostVoronoiBound
 from mollifier_theta.lemmas.di_kloosterman import (
     DIExponentModel,
     DIKloostermanBound,
-    ThetaBarrierMismatch,
 )
 from mollifier_theta.lemmas.theta_constraints import (
     ThetaMaxResult,
@@ -34,8 +35,7 @@ from mollifier_theta.lemmas.theta_constraints import (
     theta_admissible,
 )
 from mollifier_theta.lemmas.trivial_bounds import TrivialBound
-from mollifier_theta.reports.mathematica_export import export_diagonal_main_term
-from mollifier_theta.reports.render_md import render_report
+from mollifier_theta.pipelines.conrey89 import PipelineResult
 from mollifier_theta.transforms.approx_fe import ApproxFunctionalEq
 from mollifier_theta.transforms.delta_method import (
     DeltaMethodCollapse,
@@ -47,40 +47,17 @@ from mollifier_theta.transforms.integrate_t import IntegrateOverT
 from mollifier_theta.transforms.kloosterman_form import KloostermanForm
 from mollifier_theta.transforms.open_square import OpenSquare
 from mollifier_theta.transforms.phase_absorb import PhaseAbsorb
+from mollifier_theta.transforms.voronoi import VoronoiTransform
 
 
-@dataclass
-class PipelineResult:
-    """Result of running the Conrey89 pipeline."""
-
-    ledger: TermLedger
-    theta_val: float
-    theta_admissible: bool
-    theta_max_result: ThetaMaxResult | None
-    main_terms: list[Term]
-    bounded_terms: list[Term]
-    error_terms: list[Term]
-    report_data: dict = field(default_factory=dict)
-
-    @property
-    def theta_max(self) -> float | None:
-        """Symbolic theta_max as float (backward-compatible accessor)."""
-        if self.theta_max_result is None:
-            return None
-        return self.theta_max_result.symbolic_float
-
-
-def conrey89_pipeline(
+def conrey89_voronoi_pipeline(
     theta_val: float = 0.56,
     K: int = 3,
     strict: bool = False,
 ) -> PipelineResult:
-    """Run the full Conrey89 reproduction pipeline at a given theta.
+    """Run the Conrey89 pipeline with Voronoi inserted between Setup and Collapse.
 
-    When strict=True, validates invariants after every transform stage
-    and raises PipelineInvariantViolation on any failure.
-
-    Returns a PipelineResult with the full ledger, theta analysis, and report data.
+    When strict=True, validates invariants after every transform stage.
     """
     ledger = TermLedger()
 
@@ -111,11 +88,10 @@ def conrey89_pipeline(
     afe = ApproxFunctionalEq()
     afe_terms = _apply(afe, [initial], "ApproxFunctionalEq")
 
-    # Separate error terms early
     main_afe_terms = [t for t in afe_terms if t.status != TermStatus.ERROR]
     afe_errors = [t for t in afe_terms if t.status == TermStatus.ERROR]
 
-    # Step 2: Open the square for each main AFE term
+    # Step 2: Open the square
     open_sq = OpenSquare(K=K)
     cross_terms = _apply(open_sq, main_afe_terms, f"OpenSquare(K={K})")
 
@@ -130,15 +106,18 @@ def conrey89_pipeline(
     diagonal_terms = [t for t in split_terms if t.kind == TermKind.DIAGONAL]
     off_diagonal_terms = [t for t in split_terms if t.kind == TermKind.OFF_DIAGONAL]
 
-    # Step 5a: Diagonal extraction
+    # Step 5a: Diagonal extraction (same as original)
     diag_extract = DiagonalExtract(K=K)
     diag_results = _apply(diag_extract, diagonal_terms, "DiagonalExtract")
 
-    # Step 5b: Off-diagonal reduction (two-stage delta method)
+    # Step 5b: Off-diagonal with Voronoi
     delta_setup = DeltaMethodSetup()
+    voronoi = VoronoiTransform(target_variable="n")
     delta_collapse = DeltaMethodCollapse()
+
     delta_intermediate = _apply(delta_setup, off_diagonal_terms, "DeltaMethodSetup")
-    delta_terms = _apply(delta_collapse, delta_intermediate, "DeltaMethodCollapse")
+    voronoi_terms = _apply(voronoi, delta_intermediate, "VoronoiTransform")
+    delta_terms = _apply(delta_collapse, voronoi_terms, "DeltaMethodCollapse")
 
     kloosterman = KloostermanForm()
     kloos_terms = _apply(kloosterman, delta_terms, "KloostermanForm")
@@ -146,22 +125,29 @@ def conrey89_pipeline(
     phase_abs = PhaseAbsorb()
     absorbed_terms = _apply(phase_abs, kloos_terms, "PhaseAbsorb")
 
-    # Step 6: Apply DI Kloosterman bound
+    # Step 6: Apply bounds — PostVoronoiBound for voronoi-path terms,
+    # DIKloostermanBound for any remaining non-voronoi Kloosterman terms.
+    pv_bound = PostVoronoiBound()
     di_bound = DIKloostermanBound()
+
     if runner:
-        bounded_off_diag_terms = runner.run_bounding_stage(
-            di_bound, absorbed_terms, "DIKloostermanBound",
+        pv_results = runner.run_bounding_stage(
+            pv_bound, absorbed_terms, "PostVoronoiBound",
         )
-        bounded_off_diag = [t for t in bounded_off_diag_terms if t.status == TermStatus.BOUND_ONLY]
+        # Terms not handled by PostVoronoi go to DI
+        remaining = [t for t in pv_results if t.status != TermStatus.BOUND_ONLY]
+        if remaining:
+            runner.run_bounding_stage(di_bound, remaining, "DIKloostermanBound")
     else:
-        bounded_off_diag = []
         for term in absorbed_terms:
-            if di_bound.applies(term):
+            if pv_bound.applies(term):
+                bounded = pv_bound.bound(term)
+                ledger.add(bounded)
+            elif di_bound.applies(term):
                 bounded = di_bound.bound(term)
                 ledger.add(bounded)
-                bounded_off_diag.append(bounded)
 
-    # Step 7: Apply trivial bounds to AFE error terms
+    # Step 7: Trivial bounds for AFE errors
     trivial = TrivialBound()
     if runner:
         runner.run_bounding_stage(trivial, afe_errors, "TrivialBound")
@@ -172,33 +158,32 @@ def conrey89_pipeline(
                 ledger.add(bounded_err)
 
     # Step 8: Theta check
+    # The voronoi pipeline's binding constraint comes from PostVoronoiBound
+    # (E(theta) = 2*theta - 1/4, theta_max = 5/8), not DI. Pass the known
+    # constant so find_theta_max skips the DI symbolic derivation.
+    from fractions import Fraction
+
+    VORONOI_KNOWN_THETA_MAX = Fraction(5, 8)
+
     all_terms = ledger.all_terms()
     is_admissible = theta_admissible(all_terms, theta_val)
 
-    # Compute and reconcile theta_max via all three paths:
-    #   symbolic (solve E=1), regression constant (4/7), numerical (binary search)
     bound_only_terms = [t for t in all_terms if t.status == TermStatus.BOUND_ONLY]
-    theta_max_res: ThetaMaxResult | None = None
     di_model = DIExponentModel()
 
     if bound_only_terms:
-        theta_max_res = find_theta_max(all_terms)
-        # find_theta_max already does the Layer 1 + Layer 2 cross-check
-        # and raises ThetaBarrierMismatch on disagreement.
+        theta_max_res = find_theta_max(
+            all_terms, known_theta_max=VORONOI_KNOWN_THETA_MAX,
+        )
     else:
-        # No bounded terms to binary-search over; fall back to pure symbolic
-        from fractions import Fraction
-        symbolic_max_sp = di_model.theta_max_with_crosscheck()
-        symbolic_max = Fraction(int(symbolic_max_sp.p), int(symbolic_max_sp.q))
         theta_max_res = ThetaMaxResult(
-            symbolic=symbolic_max,
-            numerical=float(symbolic_max),
-            numerical_lo=float(symbolic_max),
-            numerical_hi=float(symbolic_max),
+            symbolic=VORONOI_KNOWN_THETA_MAX,
+            numerical=float(VORONOI_KNOWN_THETA_MAX),
+            numerical_lo=float(VORONOI_KNOWN_THETA_MAX),
+            numerical_hi=float(VORONOI_KNOWN_THETA_MAX),
             tol=0.0,
         )
 
-    # Gather results
     main_terms = [t for t in all_terms if t.status == TermStatus.MAIN_TERM]
     error_terms = [t for t in all_terms if t.status == TermStatus.ERROR]
 
@@ -208,14 +193,13 @@ def conrey89_pipeline(
         "theta_max": theta_max_res.symbolic_float,
         "theta_max_numerical": theta_max_res.numerical,
         "theta_max_gap": theta_max_res.gap,
-        "theta_max_is_supremum": theta_max_res.is_supremum,
         "K": K,
         "total_terms": ledger.count(),
         "main_term_count": len(main_terms),
         "bound_only_count": len(bound_only_terms),
         "error_count": len(error_terms),
-        "di_exponent_table": di_model.sub_exponent_table(),
         "di_error_exponent": str(di_model.error_exponent),
+        "pipeline_variant": "conrey89_voronoi",
         "transform_chain": [
             "ApproxFunctionalEq",
             f"OpenSquare(K={K})",
@@ -223,10 +207,11 @@ def conrey89_pipeline(
             "DiagonalSplit",
             "DiagonalExtract",
             "DeltaMethodSetup",
+            "VoronoiTransform(n)",
             "DeltaMethodCollapse",
             "KloostermanForm",
             "PhaseAbsorb",
-            "DIKloostermanBound",
+            "PostVoronoiBound",
         ],
     }
 
@@ -242,16 +227,14 @@ def conrey89_pipeline(
     )
 
 
-def run_conrey89_pipeline(theta: float = 0.56, K: int = 3) -> None:
-    """CLI entry point: run pipeline and write artifacts."""
+def run_conrey89_voronoi_pipeline(theta: float = 0.56, K: int = 3) -> None:
+    """CLI entry point for the Voronoi variant pipeline."""
     console = Console()
+    console.print(f"[bold]Running Conrey89+Voronoi pipeline[/bold] theta={theta}, K={K}")
 
-    console.print(f"[bold]Running Conrey89 pipeline[/bold] theta={theta}, K={K}")
+    result = conrey89_voronoi_pipeline(theta_val=theta, K=K)
 
-    result = conrey89_pipeline(theta_val=theta, K=K)
-
-    # Write artifacts
-    artifact_dir = Path("artifacts/repro_conrey89")
+    artifact_dir = Path("artifacts/repro_conrey89_voronoi")
     artifact_dir.mkdir(parents=True, exist_ok=True)
 
     export_ledger(result.ledger, artifact_dir / "ledger.json")
@@ -261,28 +244,15 @@ def run_conrey89_pipeline(theta: float = 0.56, K: int = 3) -> None:
         "theta_val": result.theta_val,
         "theta_admissible": result.theta_admissible,
         "theta_max_symbolic": str(tmr.symbolic) if tmr else None,
-        "theta_max_symbolic_float": tmr.symbolic_float if tmr else None,
-        "theta_max_numerical": tmr.numerical if tmr else None,
-        "theta_max_gap": tmr.gap if tmr else None,
-        "theta_max_is_supremum": tmr.is_supremum if tmr else None,
-        "theta_max": result.theta_max,  # backward-compatible key
+        "theta_max": result.theta_max,
+        "pipeline_variant": "conrey89_voronoi",
         "derivation": result.report_data,
     }
     export_dict(theta_report, artifact_dir / "theta_report.json")
 
-    report_md = render_report(result)
-    (artifact_dir / "report.md").write_text(report_md)
-
-    # Mathematica export
-    export_diagonal_main_term(result.ledger, artifact_dir / "mathematica")
-
-    # Summary
     status = "[green]PASS[/green]" if result.theta_admissible else "[red]FAIL[/red]"
     console.print(f"theta={theta}: {status}")
-    tmr = result.theta_max_result
     if tmr is not None:
         console.print(f"theta_max (symbolic) = {tmr.symbolic}  ({tmr.symbolic_float})")
-        console.print(f"theta_max (numerical) = {tmr.numerical:.10f}  (binary search, tol={tmr.tol})")
-        console.print(f"  gap = {tmr.gap:.2e}  (supremum, not attained: E(4/7) = 1)")
     console.print(f"Total terms in ledger: {result.ledger.count()}")
     console.print(f"Artifacts written to {artifact_dir}")

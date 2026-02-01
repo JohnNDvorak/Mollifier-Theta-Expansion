@@ -55,6 +55,7 @@ class OpenSquare:
                             expression=f"(ell{ell1}_m / ell{ell2}_n)^{{it}}",
                             depends_on=["m", "n", "t"],
                             is_separable=False,
+                            unit_modulus=True,
                         )
                     )
 
