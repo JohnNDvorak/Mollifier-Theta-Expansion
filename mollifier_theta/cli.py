@@ -183,5 +183,86 @@ def diagnose_compare(
     artifact_path.write_text(json_mod.dumps(comparison, indent=2, default=str))
 
 
+@export_app.command("math-params")
+def export_math_params(
+    theta: float = typer.Option(0.56, help="Theta value"),
+    k: int = typer.Option(3, "--K", help="Mollifier length K"),
+    pipeline: str = typer.Option(
+        "conrey89",
+        help="Pipeline variant (conrey89, conrey89-voronoi, conrey89-spectral)",
+    ),
+    output: Path = typer.Option(
+        Path("artifacts/math_params.json"), "--out", help="Output JSON path",
+    ),
+    json_output: bool = typer.Option(False, "--json", help="Print to stdout as JSON"),
+) -> None:
+    """Export math parameters for BoundOnly terms (bottleneck + top constraints)."""
+    import json as json_mod
+
+    from mollifier_theta.reports.math_parameter_export import export_math_parameters_json
+
+    if pipeline == "conrey89-voronoi":
+        from mollifier_theta.pipelines.conrey89_voronoi import conrey89_voronoi_pipeline
+
+        result = conrey89_voronoi_pipeline(theta_val=theta, K=k)
+    elif pipeline == "conrey89-spectral":
+        from mollifier_theta.pipelines.conrey89_spectral import conrey89_spectral_pipeline
+
+        result = conrey89_spectral_pipeline(theta_val=theta, K=k)
+    else:
+        from mollifier_theta.pipelines.conrey89 import conrey89_pipeline
+
+        result = conrey89_pipeline(theta_val=theta, K=k)
+
+    all_terms = result.ledger.all_terms()
+    records = export_math_parameters_json(all_terms)
+
+    if json_output:
+        typer.echo(json_mod.dumps(records, indent=2))
+    else:
+        typer.echo(f"Exported {len(records)} math parameter records")
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json_mod.dumps(records, indent=2))
+    typer.echo(f"Written to {output}")
+
+
+@diagnose_app.command("overhead")
+def diagnose_overhead(
+    theta: float = typer.Option(0.56, help="Theta value"),
+    k: int = typer.Option(3, "--K", help="Mollifier length K"),
+    pipeline: str = typer.Option(
+        "conrey89",
+        help="Pipeline variant (conrey89, conrey89-voronoi)",
+    ),
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
+) -> None:
+    """Show theta-loss decomposition: pipeline vs raw DI overhead."""
+    import json as json_mod
+
+    from mollifier_theta.analysis.overhead_report import compute_overhead
+
+    if pipeline == "conrey89-voronoi":
+        from mollifier_theta.pipelines.conrey89_voronoi import conrey89_voronoi_pipeline
+
+        result = conrey89_voronoi_pipeline(theta_val=theta, K=k)
+    else:
+        from mollifier_theta.pipelines.conrey89 import conrey89_pipeline
+
+        result = conrey89_pipeline(theta_val=theta, K=k)
+
+    all_terms = result.ledger.all_terms()
+    report = compute_overhead(all_terms, theta_val=theta)
+
+    if json_output:
+        typer.echo(json_mod.dumps(report.to_json(), indent=2))
+    else:
+        typer.echo(report.format_table())
+
+    artifact_path = Path("artifacts/diagnose/overhead.json")
+    artifact_path.parent.mkdir(parents=True, exist_ok=True)
+    artifact_path.write_text(json_mod.dumps(report.to_json(), indent=2))
+
+
 if __name__ == "__main__":
     app()
