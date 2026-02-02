@@ -1,0 +1,38 @@
+{
+  "format_version": "1.0",
+  "record_count": 2,
+  "records": [
+    {
+      "bound_family": "DI_Kloosterman",
+      "derivation_path": [
+        "DeltaMethod",
+        "KloostermanForm",
+        "DIBound"
+      ],
+      "di_model_label": "symmetric",
+      "overhead": 0.3214285714285714,
+      "pipeline_E_val": 1.0,
+      "pipeline_exponent": "7*theta/4",
+      "raw_di_E_val": 0.6785714285714286,
+      "raw_di_exponent": "Max((theta + theta)/2 + (1 - theta), (theta) + (theta) + (1 - theta)/2) / 2",
+      "term_id": "fixture_di_001"
+    },
+    {
+      "bound_family": "LengthAwareDI_voronoi_dual",
+      "derivation_path": [
+        "DeltaMethod",
+        "VoronoiSummation",
+        "KloostermanForm",
+        "LengthAwareDIBound"
+      ],
+      "di_model_label": "voronoi_dual",
+      "overhead": -0.392857142857143,
+      "pipeline_E_val": 0.1428571428571428,
+      "pipeline_exponent": "2*theta - 1",
+      "raw_di_E_val": 0.5357142857142858,
+      "raw_di_exponent": "Max((theta + 2 - 3*theta)/2 + (1 - theta), (theta) + (2 - 3*theta) + (1 - theta)/2) / 2",
+      "term_id": "fixture_voronoi_001"
+    }
+  ],
+  "theta_val": 0.5714285714285714
+}

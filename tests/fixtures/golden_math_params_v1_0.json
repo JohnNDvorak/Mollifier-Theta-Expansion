@@ -1,0 +1,28 @@
+{
+  "format_version": "1.0",
+  "record_count": 2,
+  "records": [
+    {
+      "bound_family": "DI_Kloosterman",
+      "case_id": "symmetric",
+      "citation": "Deshouillers-Iwaniec 1982/83, Theorem 12",
+      "error_exponent": "7*theta/4",
+      "kernel_family_tags": [],
+      "m_length_exponent": "theta",
+      "modulus_exponent": "1-theta",
+      "n_length_exponent": "theta",
+      "term_id": "fixture_di_001"
+    },
+    {
+      "bound_family": "LengthAwareDI_voronoi_dual",
+      "case_id": "dual",
+      "citation": "Deshouillers-Iwaniec 1982/83; length-aware parametric model",
+      "error_exponent": "2*theta - 1",
+      "kernel_family_tags": [],
+      "m_length_exponent": "theta",
+      "modulus_exponent": "1-theta",
+      "n_length_exponent": "T^(2-3*theta)",
+      "term_id": "fixture_voronoi_001"
+    }
+  ]
+}
