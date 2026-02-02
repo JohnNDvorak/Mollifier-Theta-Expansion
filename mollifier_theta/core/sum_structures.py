@@ -92,6 +92,33 @@ class AdditiveTwist(DeepFreezeModel):
         )
 
 
+class BesselKernelFamily(str, enum.Enum):
+    """Classification of Bessel kernel type in Voronoi dual sums."""
+
+    J_BESSEL = "J_Bessel"
+    Y_BESSEL = "Y_Bessel"
+    K_BESSEL = "K_Bessel"
+    J_PLUS_K = "J+K"
+    UNSPECIFIED = "unspecified"
+
+
+class VoronoiMainKernel(DeepFreezeModel):
+    """Describes the main-term / polar-piece kernel from formula Voronoi.
+
+    The polar residual of the Estermann function produces a separate
+    term that must be bounded independently.
+    """
+
+    model_config = {"frozen": True}
+
+    arithmetic_type: ArithmeticType
+    modulus: str
+    residue_structure: str = ""
+    test_function: str = ""
+    polar_order: int = 1
+    description: str = ""
+
+
 class WeightKernel(DeepFreezeModel):
     """Classification of the smooth weight function in a sum.
 
@@ -105,6 +132,8 @@ class WeightKernel(DeepFreezeModel):
     original_name: str = ""                      # Name of the kernel before transformation
     parameters: dict[str, Any] = Field(default_factory=dict)
     description: str = ""
+    bessel_family: BesselKernelFamily = BesselKernelFamily.UNSPECIFIED
+    argument_structure: str = ""
 
 
 class SumStructure(DeepFreezeModel):

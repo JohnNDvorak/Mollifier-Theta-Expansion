@@ -9,11 +9,19 @@ during transition. Typed accessors provide safe retrieval.
 
 from __future__ import annotations
 
+import enum
 from typing import Any
 
 from pydantic import BaseModel
 
 from mollifier_theta.core.frozen_collections import DeepFreezeModel
+
+
+class VoronoiKind(str, enum.Enum):
+    """Whether the Voronoi transform is structural-only or formula-faithful."""
+
+    STRUCTURAL_ONLY = "structural_only"
+    FORMULA = "formula"
 
 
 class DeltaMethodMeta(DeepFreezeModel):
@@ -36,6 +44,7 @@ class VoronoiMeta(DeepFreezeModel):
     target_variable: str = ""
     dual_variable: str = ""
     dual_length: str = ""
+    kind: VoronoiKind = VoronoiKind.STRUCTURAL_ONLY
 
 
 class KloostermanMeta(DeepFreezeModel):
@@ -57,6 +66,21 @@ class BoundMeta(DeepFreezeModel):
     error_exponent: str = ""
     citation: str = ""
     bound_family: str = ""
+    case_id: str = ""
+    case_description: str = ""
+
+
+class KuznetsovMeta(DeepFreezeModel):
+    """Typed metadata for Kuznetsov trace formula transform."""
+
+    model_config = {"frozen": True, "extra": "forbid"}
+
+    applied: bool = False
+    sign_case: str = ""
+    bessel_transform: str = ""
+    spectral_window_scale: str = ""
+    spectral_components: list[str] = []
+    level: str = ""
 
 
 # Reserved metadata keys
@@ -64,6 +88,7 @@ _DELTA_KEY = "_delta"
 _VORONOI_KEY = "_voronoi"
 _KLOOSTERMAN_KEY = "_kloosterman"
 _BOUND_KEY = "_bound"
+_KUZNETSOV_KEY = "_kuznetsov"
 
 
 def get_delta_meta(term: Any) -> DeltaMethodMeta | None:
@@ -104,3 +129,13 @@ def get_bound_meta(term: Any) -> BoundMeta | None:
     if isinstance(raw, BoundMeta):
         return raw
     return BoundMeta.model_validate(raw)
+
+
+def get_kuznetsov_meta(term: Any) -> KuznetsovMeta | None:
+    """Extract typed Kuznetsov metadata from a term, if present."""
+    raw = term.metadata.get(_KUZNETSOV_KEY)
+    if raw is None:
+        return None
+    if isinstance(raw, KuznetsovMeta):
+        return raw
+    return KuznetsovMeta.model_validate(raw)

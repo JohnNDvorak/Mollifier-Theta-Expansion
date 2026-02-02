@@ -55,6 +55,8 @@
   ],
   "weight_kernels": [
     {
+      "argument_structure": "",
+      "bessel_family": "unspecified",
       "description": "",
       "kind": "smooth",
       "original_name": "W_AFE",

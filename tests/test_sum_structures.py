@@ -7,10 +7,12 @@ from mollifier_theta.core.ledger import TermLedger
 from mollifier_theta.core.sum_structures import (
     AdditiveTwist,
     ArithmeticType,
+    BesselKernelFamily,
     CoeffSeq,
     SumIndex,
     SumStructure,
     VoronoiEligibility,
+    VoronoiMainKernel,
     WeightKernel,
 )
 from mollifier_theta.transforms.delta_method import DeltaMethodSetup
@@ -156,3 +158,79 @@ class TestSumStructureFromPipeline:
         ss2 = SumStructure.model_validate(re_dumped)
         assert len(ss2.sum_indices) == len(ss.sum_indices)
         assert len(ss2.additive_twists) == len(ss.additive_twists)
+
+
+class TestBesselKernelFamily:
+    def test_enum_values(self) -> None:
+        assert BesselKernelFamily.J_BESSEL == "J_Bessel"
+        assert BesselKernelFamily.Y_BESSEL == "Y_Bessel"
+        assert BesselKernelFamily.K_BESSEL == "K_Bessel"
+        assert BesselKernelFamily.J_PLUS_K == "J+K"
+        assert BesselKernelFamily.UNSPECIFIED == "unspecified"
+
+    def test_all_members(self) -> None:
+        assert len(BesselKernelFamily) == 5
+
+
+class TestVoronoiMainKernel:
+    def test_creation(self) -> None:
+        vmk = VoronoiMainKernel(
+            arithmetic_type=ArithmeticType.DIVISOR,
+            modulus="c",
+            residue_structure="simple_pole",
+            test_function="W(x)",
+            polar_order=1,
+            description="Polar residual from Estermann",
+        )
+        assert vmk.arithmetic_type == ArithmeticType.DIVISOR
+        assert vmk.modulus == "c"
+        assert vmk.polar_order == 1
+
+    def test_round_trip_serialization(self) -> None:
+        vmk = VoronoiMainKernel(
+            arithmetic_type=ArithmeticType.HECKE,
+            modulus="q",
+            residue_structure="double_pole",
+            polar_order=2,
+        )
+        dumped = vmk.model_dump()
+        restored = VoronoiMainKernel.model_validate(dumped)
+        assert restored.arithmetic_type == ArithmeticType.HECKE
+        assert restored.polar_order == 2
+        assert restored.model_dump() == dumped
+
+    def test_defaults(self) -> None:
+        vmk = VoronoiMainKernel(
+            arithmetic_type=ArithmeticType.GENERIC,
+            modulus="c",
+        )
+        assert vmk.residue_structure == ""
+        assert vmk.test_function == ""
+        assert vmk.polar_order == 1
+        assert vmk.description == ""
+
+
+class TestWeightKernelBessel:
+    def test_default_bessel_family(self) -> None:
+        wk = WeightKernel(kind="smooth")
+        assert wk.bessel_family == BesselKernelFamily.UNSPECIFIED
+        assert wk.argument_structure == ""
+
+    def test_explicit_bessel_family(self) -> None:
+        wk = WeightKernel(
+            kind="bessel_transform",
+            bessel_family=BesselKernelFamily.J_PLUS_K,
+            argument_structure="4*pi*sqrt(m*n_star)/c",
+        )
+        assert wk.bessel_family == BesselKernelFamily.J_PLUS_K
+        assert wk.argument_structure == "4*pi*sqrt(m*n_star)/c"
+
+    def test_serialization_with_bessel(self) -> None:
+        wk = WeightKernel(
+            kind="bessel_transform",
+            bessel_family=BesselKernelFamily.J_BESSEL,
+            argument_structure="4*pi*sqrt(mn)/c",
+        )
+        dumped = wk.model_dump()
+        restored = WeightKernel.model_validate(dumped)
+        assert restored.bessel_family == BesselKernelFamily.J_BESSEL

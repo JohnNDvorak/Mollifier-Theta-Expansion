@@ -9,6 +9,7 @@ These are the "DO NOT SIMPLIFY" guards:
 from __future__ import annotations
 
 from mollifier_theta.core.ir import KERNEL_STATE_TRANSITIONS, KernelState, Term, TermStatus
+from mollifier_theta.core.stage_meta import VoronoiKind, get_bound_meta, get_voronoi_meta
 
 
 def check_no_premature_bound(term: Term) -> list[str]:
@@ -125,7 +126,12 @@ class PipelineInvariantViolation(Exception):
 
 
 def check_phase_deps_subset(terms: list[Term]) -> list[str]:
-    """Check that all phase depends_on entries are subsets of term.variables."""
+    """Check that all phase depends_on entries are subsets of term.variables.
+
+    For terms created by Voronoi/Kuznetsov/SpectralLargeSieve stages,
+    this is a hard error. Legacy stages keep it as warning-level but
+    still reported as violations.
+    """
     violations: list[str] = []
     for term in terms:
         var_set = set(term.variables)
@@ -203,11 +209,58 @@ def check_phases_tracked_with_context(
             if p.absorbed:
                 absorbed_exprs.add(p.expression)
 
-    remaining = missing - kloosterman_consumed - fourier_consumed - absorbed_exprs
+    # Check if Kuznetsov trace formula consumed Kloosterman phases
+    kuznetsov_consumed: set[str] = set()
+    for t in output_terms:
+        km = t.metadata.get("_kuznetsov_consumed_phases")
+        if km and isinstance(km, (list, tuple)):
+            for expr in km:
+                kuznetsov_consumed.add(expr)
+
+    remaining = (
+        missing - kloosterman_consumed - fourier_consumed
+        - absorbed_exprs - kuznetsov_consumed
+    )
     if remaining:
         violations.append(
             f"Phases lost in {stage or 'transform'}: {remaining}"
         )
+    return violations
+
+
+def check_spectral_bound_voronoi_kind(term: Term) -> list[str]:
+    """Red Flag B: SpectralLargeSieve bounds require formula Voronoi.
+
+    If a BoundOnly term has bound_family == 'SpectralLargeSieve',
+    then its _voronoi.kind must be 'formula'. This prevents structural
+    Voronoi from reaching real spectral bounds.
+    """
+    violations: list[str] = []
+    if term.status != TermStatus.BOUND_ONLY:
+        return violations
+    bm = get_bound_meta(term)
+    if bm is None or bm.bound_family != "SpectralLargeSieve":
+        return violations
+    vm = get_voronoi_meta(term)
+    if vm is None or vm.kind != VoronoiKind.FORMULA:
+        violations.append(
+            f"Term {term.id}: SpectralLargeSieve bound requires "
+            f"VoronoiKind.FORMULA but got "
+            f"{vm.kind.value if vm else 'no Voronoi metadata'}"
+        )
+    return violations
+
+
+def check_spectralized_has_kuznetsov_meta(term: Term) -> list[str]:
+    """If kernel_state==SPECTRALIZED, must have _kuznetsov metadata."""
+    violations: list[str] = []
+    if term.kernel_state == KernelState.SPECTRALIZED:
+        km = term.metadata.get("_kuznetsov")
+        if not km:
+            violations.append(
+                f"Term {term.id}: kernel_state=SPECTRALIZED but "
+                f"_kuznetsov metadata is missing"
+            )
     return violations
 
 
@@ -216,6 +269,8 @@ def validate_term(term: Term) -> list[str]:
     violations: list[str] = []
     violations.extend(check_no_premature_bound(term))
     violations.extend(check_kernel_state_consistency(term))
+    violations.extend(check_spectralized_has_kuznetsov_meta(term))
+    violations.extend(check_spectral_bound_voronoi_kind(term))
     return violations
 
 

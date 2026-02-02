@@ -15,7 +15,7 @@ from mollifier_theta.core.ir import (
     TermStatus,
 )
 from mollifier_theta.core.scale_model import ScaleModel, theta
-from mollifier_theta.core.stage_meta import BoundMeta
+from mollifier_theta.core.stage_meta import BoundMeta, VoronoiKind, get_voronoi_meta
 from mollifier_theta.analysis.exponent_model import ExponentConstraint
 
 
@@ -36,22 +36,47 @@ class BoundStrategy(Protocol):
     def constraints(self) -> list[ExponentConstraint]: ...
 
 
+@runtime_checkable
+class MultiBoundStrategy(Protocol):
+    """Protocol for a bounding strategy that produces multiple BoundOnly terms.
+
+    Used when a single input term gives rise to multiple bound terms
+    (e.g. case-tree bounds with different regimes).
+    """
+
+    @property
+    def name(self) -> str: ...
+
+    @property
+    def citation(self) -> str: ...
+
+    def applies(self, term: Term) -> bool: ...
+
+    def bound_multi(self, term: Term) -> list[Term]: ...
+
+    def constraints(self) -> list[ExponentConstraint]: ...
+
+
 class BoundStrategyRegistry:
-    """Registry of available bound strategies for pipeline selection."""
+    """Registry of available bound strategies for pipeline selection.
+
+    Accepts both BoundStrategy (single output) and MultiBoundStrategy
+    (multiple outputs per input term).
+    """
 
     def __init__(self) -> None:
-        self._strategies: dict[str, BoundStrategy] = {}
+        self._strategies: dict[str, BoundStrategy | MultiBoundStrategy] = {}
 
-    def register(self, strategy: BoundStrategy) -> None:
+    def register(self, strategy: BoundStrategy | MultiBoundStrategy) -> None:
         self._strategies[strategy.name] = strategy
 
-    def get(self, name: str) -> BoundStrategy | None:
+    def get(self, name: str) -> BoundStrategy | MultiBoundStrategy | None:
         return self._strategies.get(name)
 
     def list_strategies(self) -> list[str]:
         return list(self._strategies.keys())
 
-    def all_strategies(self) -> list[BoundStrategy]:
+    def all_strategies(self) -> list[BoundStrategy | MultiBoundStrategy]:
         return list(self._strategies.values())
 
 
@@ -85,12 +110,18 @@ class PostVoronoiBound:
         )
 
     def applies(self, term: Term) -> bool:
-        return (
+        if not (
             term.kind == TermKind.KLOOSTERMAN
             and term.status == TermStatus.ACTIVE
             and term.metadata.get("kloosterman_form", False)
             and term.metadata.get("voronoi_applied", False)
-        )
+        ):
+            return False
+        # Red Flag B: PostVoronoiBound only for structural Voronoi or missing metadata
+        vm = get_voronoi_meta(term)
+        if vm is not None and vm.kind == VoronoiKind.FORMULA:
+            return False
+        return True
 
     def bound(self, term: Term) -> Term:
         scale = ScaleModel(

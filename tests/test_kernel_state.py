@@ -92,14 +92,34 @@ class TestKernelStateTransitions:
         )
         assert len(violations) == 1
 
-    def test_kloostermanized_terminal(self) -> None:
+    def test_kloostermanized_to_spectralized_legal(self) -> None:
+        assert check_kernel_state_transition(
+            KernelState.KLOOSTERMANIZED, KernelState.SPECTRALIZED
+        ) == []
+
+    def test_kloostermanized_other_transitions_illegal(self) -> None:
         for state in KernelState:
-            if state == KernelState.KLOOSTERMANIZED:
+            if state in (KernelState.KLOOSTERMANIZED, KernelState.SPECTRALIZED):
                 continue
             violations = check_kernel_state_transition(
                 KernelState.KLOOSTERMANIZED, state
             )
             assert len(violations) == 1
+
+    def test_spectralized_terminal(self) -> None:
+        for state in KernelState:
+            if state == KernelState.SPECTRALIZED:
+                continue
+            violations = check_kernel_state_transition(
+                KernelState.SPECTRALIZED, state
+            )
+            assert len(violations) == 1
+
+    def test_collapsed_to_spectralized_illegal(self) -> None:
+        violations = check_kernel_state_transition(
+            KernelState.COLLAPSED, KernelState.SPECTRALIZED
+        )
+        assert len(violations) == 1
 
 
 class TestKernelStateInPipeline:

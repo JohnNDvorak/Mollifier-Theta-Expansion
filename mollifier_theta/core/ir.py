@@ -30,6 +30,7 @@ class KernelState(str, enum.Enum):
     VORONOI_APPLIED = "VoronoiApplied"
     COLLAPSED = "Collapsed"
     KLOOSTERMANIZED = "Kloostermanized"
+    SPECTRALIZED = "Spectralized"
 
 
 # Legal kernel state transitions
@@ -38,7 +39,8 @@ KERNEL_STATE_TRANSITIONS: dict[KernelState, set[KernelState]] = {
     KernelState.UNCOLLAPSED_DELTA: {KernelState.VORONOI_APPLIED, KernelState.COLLAPSED},
     KernelState.VORONOI_APPLIED: {KernelState.COLLAPSED},
     KernelState.COLLAPSED: {KernelState.KLOOSTERMANIZED},
-    KernelState.KLOOSTERMANIZED: set(),
+    KernelState.KLOOSTERMANIZED: {KernelState.SPECTRALIZED},
+    KernelState.SPECTRALIZED: set(),
 }
 
 
@@ -56,6 +58,7 @@ class TermKind(str, enum.Enum):
     DIAGONAL = "Diagonal"
     OFF_DIAGONAL = "OffDiagonal"
     KLOOSTERMAN = "Kloosterman"
+    SPECTRAL = "Spectral"
     ERROR = "Error"
 
 

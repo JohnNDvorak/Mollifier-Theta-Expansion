@@ -47,7 +47,7 @@ class StrictPipelineRunner:
     """
 
     def __init__(self, ledger: TermLedger | None = None) -> None:
-        self.ledger = ledger or TermLedger()
+        self.ledger = ledger if ledger is not None else TermLedger()
         self._stage_log: list[dict[str, Any]] = []
 
     def run_stage(
@@ -156,18 +156,28 @@ class StrictPipelineRunner:
         """
 
         class _BoundAdapter:
-            """Adapts .applies()/.bound() to the Transform protocol."""
+            """Adapts .applies()/.bound() or .bound_multi() to the Transform protocol.
+
+            Detects MultiBoundStrategy (has bound_multi) vs BoundStrategy (has bound).
+            """
 
             def __init__(self, bound_obj: Any) -> None:
                 self._bound = bound_obj
+                self._is_multi = hasattr(bound_obj, "bound_multi")
 
             def apply(self, terms: list[Term], ledger: TermLedger) -> list[Term]:
                 out: list[Term] = []
                 for t in terms:
                     if self._bound.applies(t):
-                        bounded = self._bound.bound(t)
-                        ledger.add(bounded)
-                        out.append(bounded)
+                        if self._is_multi:
+                            bounded_list = self._bound.bound_multi(t)
+                            for b in bounded_list:
+                                ledger.add(b)
+                            out.extend(bounded_list)
+                        else:
+                            bounded = self._bound.bound(t)
+                            ledger.add(bounded)
+                            out.append(bounded)
                     else:
                         out.append(t)
                 return out

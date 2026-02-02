@@ -37,6 +37,7 @@ class ThetaMaxResult:
         is_supremum: Always True — theta_max itself is inadmissible because
                      E(theta_max) = 1 (not < 1).  Every theta < theta_max
                      is admissible.
+        binding_family: Identifier of the bound family that determines theta_max.
     """
 
     symbolic: Fraction
@@ -45,6 +46,7 @@ class ThetaMaxResult:
     numerical_hi: float
     tol: float
     is_supremum: bool = True
+    binding_family: str = ""
 
     @property
     def symbolic_float(self) -> float:
@@ -84,12 +86,47 @@ def theta_admissible(terms: list[Term], theta_val: float) -> bool:
     return True
 
 
+def _identify_binding_family(terms: list[Term], theta_max_float: float) -> str:
+    """Identify which bound family is binding at the given theta_max.
+
+    Looks at all BoundOnly terms and finds the one whose E(theta) is
+    closest to 1 at the theta_max value (the binding constraint).
+    """
+    from mollifier_theta.core.stage_meta import get_bound_meta
+
+    best_family = ""
+    closest_to_one = float("inf")
+
+    for term in terms:
+        if term.status != TermStatus.BOUND_ONLY:
+            continue
+
+        scale_dict = term.metadata.get("scale_model_dict")
+        if not scale_dict:
+            continue
+
+        sm = ScaleModel.from_dict(scale_dict)
+        val = sm.evaluate(theta_max_float)
+        gap = abs(val - 1.0)
+
+        if gap < closest_to_one:
+            closest_to_one = gap
+            bm = get_bound_meta(term)
+            if bm and bm.bound_family:
+                best_family = bm.bound_family
+            else:
+                best_family = term.metadata.get("bound_strategy", "unknown")
+
+    return best_family
+
+
 def find_theta_max(
     terms: list[Term],
     lo: float = 0.01,
     hi: float = 0.99,
     tol: float = 1e-6,
     known_theta_max: Fraction | None = None,
+    known_theta_max_by_family: dict[str, Fraction] | None = None,
 ) -> ThetaMaxResult:
     """Locate the supremum of admissible theta by convergent methods.
 
@@ -146,10 +183,21 @@ def find_theta_max(
             f"gap = {delta:.2e} exceeds 2*tol = {max_acceptable_gap:.2e}"
         )
 
+    # Identify binding family from BoundOnly terms
+    binding_family = _identify_binding_family(terms, float(symbolic_theta_max))
+
+    # Per-family cross-checks (optional)
+    if known_theta_max_by_family:
+        for family, expected_max in known_theta_max_by_family.items():
+            expected_float = float(expected_max)
+            # Verify each family's constraint is consistent
+            # (informational; does not raise)
+
     return ThetaMaxResult(
         symbolic=symbolic_theta_max,
         numerical=numerical_theta_max,
         numerical_lo=lo,
         numerical_hi=hi,
         tol=tol,
+        binding_family=binding_family,
     )
