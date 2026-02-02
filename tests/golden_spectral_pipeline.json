@@ -1,0 +1,55 @@
+{
+  "K": 3,
+  "binding_family": "SpectralLargeSieve",
+  "bound_case_counts": {
+    "SpectralLargeSieve:bessel_transition": 12,
+    "SpectralLargeSieve:large_modulus": 12,
+    "SpectralLargeSieve:small_modulus": 12
+  },
+  "bound_only_count": 37,
+  "error_count": 13,
+  "kernel_state_counts": {
+    "Collapsed": 12,
+    "Kloostermanized": 24,
+    "None": 77,
+    "Spectralized": 48,
+    "UncollapsedDelta": 12,
+    "VoronoiApplied": 24
+  },
+  "kind_counts": {
+    "Cross": 24,
+    "Diagonal": 24,
+    "DirichletSum": 2,
+    "Error": 14,
+    "Integral": 1,
+    "Kloosterman": 24,
+    "OffDiagonal": 60,
+    "Spectral": 48
+  },
+  "main_term_count": 24,
+  "pipeline_variant": "conrey89_spectral",
+  "status_counts": {
+    "Active": 123,
+    "BoundOnly": 37,
+    "Error": 13,
+    "MainTerm": 24
+  },
+  "theta_admissible": true,
+  "theta_max_symbolic": "1/3",
+  "theta_val": 0.3,
+  "total_terms": 197,
+  "transform_chain": [
+    "ApproxFunctionalEq",
+    "OpenSquare(K=3)",
+    "IntegrateOverT",
+    "DiagonalSplit",
+    "DiagonalExtract",
+    "DeltaMethodSetup",
+    "VoronoiTransform(FORMULA)",
+    "DeltaMethodCollapse",
+    "KloostermanForm",
+    "PhaseAbsorb",
+    "KuznetsovTransform",
+    "SpectralLargeSieveBound"
+  ]
+}

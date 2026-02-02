@@ -198,3 +198,15 @@ class StrictPipelineRunner:
     def stage_log(self) -> list[dict[str, Any]]:
         """Log of all stages run and their validation results."""
         return list(self._stage_log)
+
+    def explain(self) -> str:
+        """Human-parseable trace of the transform stack, metas, and bound branches.
+
+        Returns a DerivationTrace formatted summary covering all terms
+        in the ledger and the stage log from this runner.
+        """
+        from mollifier_theta.pipelines.derivation_trace import DerivationTrace
+
+        all_terms = self.ledger.all_terms()
+        trace = DerivationTrace.from_terms(all_terms, stage_log=self._stage_log)
+        return trace.format_full()
